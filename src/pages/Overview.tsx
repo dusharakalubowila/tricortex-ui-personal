@@ -124,7 +124,14 @@ export default function Overview() {
   const totalSpent = tenants.reduce((sum, t) => sum + t.total_tokens, 0);
   const totalBudget = tenants.reduce((sum, t) => sum + (t.budget ?? 0), 0);
 
-  const installedCount = registeredAgents.filter((a) => a.effective_status === "installed").length;
+  // "Connected" = genuinely runnable right now, whether that's a trusted in-process
+  // AgentSpec ("installed"/"stale") or an externally-hosted agent reachable through the
+  // generic HTTP adapter ("executable_via_http") -- see
+  // AgentRegistrationRecord.effective_status(). Only "not_installed" (metadata with no
+  // way to actually run) and "disabled" are excluded, since those two are the only
+  // statuses where a task naming the agent would actually fail.
+  const CONNECTED_STATUSES = new Set(["installed", "stale", "executable_via_http"]);
+  const connectedCount = registeredAgents.filter((a) => CONNECTED_STATUSES.has(a.effective_status)).length;
   const totalRegistered = registeredAgents.length;
 
   const projectAgentCounts = new Map<string, number>();
@@ -180,10 +187,10 @@ export default function Overview() {
         <StatCard
           icon={Download}
           iconClassName="bg-emerald-500/15 text-emerald-300"
-          label="Installed"
-          value={totalRegistered > 0 ? `${installedCount} / ${totalRegistered}` : "0 / 0"}
-          caption={totalRegistered > 0 && installedCount === totalRegistered ? "Executable" : totalRegistered > 0 ? "Some not installed" : "No agents registered via SDK yet"}
-          captionClassName={totalRegistered > 0 && installedCount === totalRegistered ? "text-emerald-400" : undefined}
+          label="Connected Agents"
+          value={totalRegistered > 0 ? `${connectedCount} / ${totalRegistered}` : "0 / 0"}
+          caption={totalRegistered > 0 && connectedCount === totalRegistered ? "All executable" : totalRegistered > 0 ? "Some not runnable" : "No agents registered via SDK yet"}
+          captionClassName={totalRegistered > 0 && connectedCount === totalRegistered ? "text-emerald-400" : undefined}
         />
         <StatCard
           icon={Cpu}
