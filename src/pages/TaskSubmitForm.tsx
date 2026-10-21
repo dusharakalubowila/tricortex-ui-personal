@@ -1,21 +1,63 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
-import { ApiError, submitTask } from "../api/client";
+import { ApiError, listProjects, listRegisteredProjectAgents, submitTask } from "../api/client";
+
+const AUTO_ROUTE_VALUE = "";
+
+/** One selectable (tenant, agent) pair for the dropdown -- always a real, currently
+ * registered combination, so picking one can never reproduce the "agent name typed by
+ * hand doesn't match the tenant it's actually registered under" mistake (the cause of a
+ * real "no such agent registered" task failure this form used to allow silently). */
+interface AgentOption {
+  value: string; // `${project_id}::${agent_name}` -- unique, used as the <option> value
+  projectId: string;
+  projectName: string;
+  agentName: string;
+  label: string;
+  effectiveStatus: string;
+}
 
 // PUBLIC_INTERFACE
 export default function TaskSubmitForm() {
   /** Task submission form: collects a `TaskRequest` (required `goal`, plus optional
-   * `agent_name`, `provider_name`, `tenant_id`, `requester_roles`), posts it via
-   * `submitTask`, and navigates to the new task's detail page on success. */
+   * `agent_name`+`tenant_id` picked together from a dropdown of real registered agents,
+   * `provider_name`, `requester_roles`), posts it via `submitTask`, and navigates to the
+   * new task's detail page on success. */
   const navigate = useNavigate();
   const [goal, setGoal] = useState("");
-  const [agentName, setAgentName] = useState("");
+  const [agentSelection, setAgentSelection] = useState(AUTO_ROUTE_VALUE);
   const [providerName, setProviderName] = useState("");
-  const [tenantId, setTenantId] = useState("");
   const [requesterRoles, setRequesterRoles] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const agentOptionsQuery = useQuery({
+    queryKey: ["registered-agents", "all"],
+    queryFn: async () => {
+      const projects = await listProjects();
+      const perProject = await Promise.all(
+        projects.map(async (project) => {
+          const agents = await listRegisteredProjectAgents(project.project_id);
+          return agents.map(
+            (agent): AgentOption => ({
+              value: `${project.project_id}::${agent.name}`,
+              projectId: project.project_id,
+              projectName: project.name,
+              agentName: agent.name,
+              label: `${agent.display_name || agent.name} (${project.name})`,
+              effectiveStatus: agent.effective_status,
+            }),
+          );
+        }),
+      );
+      return perProject.flat();
+    },
+  });
+
+  const agentOptions = useMemo(() => agentOptionsQuery.data ?? [], [agentOptionsQuery.data]);
+  const selected = agentOptions.find((option) => option.value === agentSelection);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,9 +70,9 @@ export default function TaskSubmitForm() {
     try {
       const record = await submitTask({
         goal: goal.trim(),
-        agent_name: agentName.trim() || undefined,
+        agent_name: selected?.agentName,
         provider_name: providerName.trim() || undefined,
-        tenant_id: tenantId.trim() || undefined,
+        tenant_id: selected?.projectId,
         requester_roles: requesterRoles.trim()
           ? requesterRoles.split(",").map((role) => role.trim()).filter(Boolean)
           : undefined,
@@ -60,16 +102,32 @@ export default function TaskSubmitForm() {
         />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label htmlFor="agentName" className="block text-sm font-medium mb-1">
-            Agent name (optional)
+        <div className="sm:col-span-2">
+          <label htmlFor="agentSelection" className="block text-sm font-medium mb-1">
+            Agent
           </label>
-          <input
-            id="agentName"
+          <select
+            id="agentSelection"
             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
-            value={agentName}
-            onChange={(e) => setAgentName(e.target.value)}
-          />
+            value={agentSelection}
+            onChange={(e) => setAgentSelection(e.target.value)}
+          >
+            <option value={AUTO_ROUTE_VALUE}>
+              {agentOptionsQuery.isLoading
+                ? "Loading registered agents…"
+                : "Auto-route (let Tricortex pick by keyword match)"}
+            </option>
+            {agentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label} — {option.effectiveStatus.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            {selected
+              ? `Will send this task to agent "${selected.agentName}" under tenant "${selected.projectId}".`
+              : "No specific agent picked -- Tricortex will auto-route by keyword match across every agent, which can hit the wrong one. Pick an agent above to target a specific one reliably."}
+          </p>
         </div>
         <div>
           <label htmlFor="providerName" className="block text-sm font-medium mb-1">
@@ -80,17 +138,6 @@ export default function TaskSubmitForm() {
             className="w-full rounded border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
             value={providerName}
             onChange={(e) => setProviderName(e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="tenantId" className="block text-sm font-medium mb-1">
-            Tenant ID (optional)
-          </label>
-          <input
-            id="tenantId"
-            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
           />
         </div>
         <div>
