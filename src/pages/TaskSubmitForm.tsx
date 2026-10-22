@@ -95,7 +95,15 @@ export default function TaskSubmitForm() {
           </label>
           <select
             id="projectId"
-            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
+            // `bg-transparent` alone leaves this readable when closed (it shows the
+            // page's own background through it) but the browser renders the *open*
+            // dropdown list natively, ignoring the page's dark styling -- without an
+            // explicit background/text color and a `color-scheme` hint, that popup (and
+            // sometimes the closed control itself) renders with the OS's light-mode
+            // defaults. Explicit colors + colorScheme fix it in both light and dark --
+            // see Governance.tsx's policyRule select for the same fix applied earlier.
+            style={{ colorScheme: "dark" }}
+            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
             value={projectId}
             onChange={(e) => handleProjectChange(e.target.value)}
           >
@@ -115,7 +123,8 @@ export default function TaskSubmitForm() {
           </label>
           <select
             id="agentName"
-            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm"
+            style={{ colorScheme: "dark" }}
+            className="w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-3 py-2 text-sm"
             value={agentName}
             onChange={(e) => setAgentName(e.target.value)}
             disabled={projectId !== UNSCOPED_PROJECT_VALUE && projectAgentsQuery.isLoading}
